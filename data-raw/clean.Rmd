@@ -1,0 +1,167 @@
+---
+title: "cleaning"
+output: html_document
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  warning = FALSE,
+  message = FALSE,
+  error = FALSE, 
+  cache = FALSE
+)
+```
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(SnowballC)
+
+data(stop_words)
+theme_set(theme_bw())
+
+comments_df <- readr::read_csv(file = file.path("intermediate", "kyle_cleaned.csv"))
+comment_paths <- readr::read_csv(file = file.path("kyle_paths.csv"))
+```
+
+```{r}
+comments_df
+```
+
+
+```{r}
+token_sentiments <- comments_df %>%
+  select(comment_id, body) %>%
+  unnest_tokens(word, body) %>%
+  mutate(word = wordStem(word)) %>%
+  anti_join(stop_words) %>%
+  inner_join(get_sentiments("afinn"))
+
+na_sentiment_comments <-
+  comments_df %>%
+  anti_join(token_sentiments) %>%
+  select(comment_id)
+  
+sentiment_comments <-
+  token_sentiments %>%
+  group_by(comment_id) %>%
+  summarise(sentiment = sum(value)) %>%
+  arrange(sentiment) %>%
+  left_join(comments_df)
+
+na_sentiment_comments
+
+sentiment_comments
+
+
+```
+```{r}
+comment_paths2 <- comment_paths %>%
+  filter(length == 2) %>%
+  anti_join(na_sentiment_comments, by = c('comment0' = 'comment_id')) %>%
+  anti_join(na_sentiment_comments, by = c('comment1' = 'comment_id')) %>%
+  left_join(sentiment_comments, by = c('comment0' = 'comment_id')) %>%
+  select(id, length, sentiment0 = sentiment, comment1) %>%
+  left_join(sentiment_comments, by = c('comment1' = 'comment_id')) %>%
+  select(id, length, sentiment0, sentiment1 = sentiment)
+
+comment_paths2
+  
+
+```
+
+
+```{r}
+# depth_0_comments <- sentiment_comments %>%
+#   filter(depth == 0) %>%
+#   select(name, sentiment)
+# 
+# depth_1_comments <- sentiment_comments %>%
+#   filter(depth == 1)
+# 
+# depth_2_comments <- sentiment_comments %>%
+#   filter(depth == 2)
+# 
+# depth_3_comments <- sentiment_comments %>%
+#   filter(depth == 3)
+# 
+# top_level_pairs <-
+#   depth_1_comments %>%
+#   inner_join(depth_0_comments, 
+#              by = c('parent_id' = 'name'),
+#              suffix = c('_child', '_parent'),
+#              keep = FALSE) %>%
+#   select(name_parent = parent_id,
+#          sentiment_parent,
+#          name_child = name,
+#          sentiment_child) %>%
+#   arrange(sentiment_parent)
+# 
+# top_level_pairs
+```
+```{r}
+# top_level_pairs %>%
+#   ggplot(aes(x = sentiment_parent, y = sentiment_child)) +
+#   geom_jitter(width = .5, size = 1) + 
+#   geom_smooth(method = "loess", se = FALSE)
+```
+
+```{r}
+comment_paths2 %>%
+  ggplot(aes(x = sentiment0, y = sentiment1)) +
+  geom_jitter(width = .2, size = 1) + 
+  geom_smooth(method = "loess", se = FALSE)
+  
+
+  
+
+```
+
+
+
+```{r}
+# sentiment_paths <- comment_paths %>%
+#   left_join(tidy_reddit) %>%
+#   select(id, root, position, sentiment) %>%
+#   mutate(na_sentiment = is.na(sentiment),
+#          sentiment = if_else(is.na(sentiment), true = 0, false = sentiment))
+#   
+# sentiment_paths
+```
+
+
+```{r}
+roots <- sentiment_paths %>%
+  select(root) %>%
+  distinct()
+
+roots_sample <- c("gilrodu", "gig4fro", "giq46ua", "giz917t", "gie0n19")
+
+sample <- sentiment_paths %>%
+  filter(root %in% roots_sample)
+
+sample
+```
+
+
+```{r}
+
+  
+ggplot(sample, aes(x = position, y = sentiment)) +
+  geom_line(size = 0.5) +
+  geom_point(aes(color = na_sentiment), size = 0.6) +
+  theme(axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_text(size = 12),
+        legend.position = 'none') +
+  xlab(label = 'Repeat submissions') +
+  ylab(label = 'Upvotes') +
+  # scale_y_log10() +
+  scale_color_manual(values = c('black', 'red'))+
+  facet_wrap(~ root, 
+             scales = 'fixed', 
+             nrow = 3, 
+             shrink = FALSE)
+
+```
